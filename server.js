@@ -2,39 +2,44 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const dotenv = require('dotenv'); // Make sure to add dotenv for environment variables'
-const bcrypt = require("bcrypt");
+const dotenv = require('dotenv'); 
+const bcrypt = require("bcryptjs"); // Updated to bcryptjs
 const jwt = require("jsonwebtoken");
-const Ad = require("./models/Ad"); // Ensure correct path
+const Ad = require("./models/Ad"); 
 const chatRoutes = require("./routes/chatRoutes");
 const userRoutes = require('./routes/userRoutes');
 const adRoutes = require('./routes/adRoutes');
+
 dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
+
 app.use(cors());
 app.use(bodyParser.json());
 
+// Connect to MongoDB
 mongoose
   .connect(process.env.MONGODB_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
   })
-
   .then(() => console.log('MongoDB connected successfully!'))
   .catch((err) => console.error('Failed to connect to MongoDB:', err));
 
-// Use the user and ad routes for handling login/register and ad creation
+// Use routes
 app.use('/api/users', userRoutes);
-app.use('/api/ads', adRoutes); // Added adRoutes here
+app.use('/api/ads', adRoutes); 
 app.use("/api/chat", chatRoutes);
 
+// Admin Schema & Model
 const adminSchema = new mongoose.Schema({
-email: { type: String, required: true, unique: true },
-password: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
 });
 
 const Admin = mongoose.model("Admin", adminSchema);
+
+// Middleware: Verify JWT Token
 const verifyToken = (req, res, next) => {
   const token = req.headers.authorization?.split(" ")[1];
   if (!token) {
@@ -50,12 +55,12 @@ const verifyToken = (req, res, next) => {
   });
 };
 
-// Admin login route
+// Admin Login Route
 app.post("/api/admin/login", async (req, res) => {
   const { email, password } = req.body;
   try {
     const admin = await Admin.findOne({ email });
-    if (!admin || !(await bcrypt.compare(password, admin.password))) {
+    if (!admin || !bcrypt.compareSync(password, admin.password)) {
       return res.status(401).json({ success: false, message: "Invalid credentials" });
     }
 
@@ -69,6 +74,7 @@ app.post("/api/admin/login", async (req, res) => {
   }
 });
 
+// Fetch All Ads (Admin Only)
 app.get("/api/admin/ads", verifyToken, async (req, res) => {
   try {
     const ads = await Ad.find();
@@ -76,10 +82,9 @@ app.get("/api/admin/ads", verifyToken, async (req, res) => {
   } catch (error) {
     res.status(500).json({ success: false, message: "Failed to fetch ads", error });
   }
-
 });
 
-// Create a new ad (accessible only to logged-in admins)
+// Create a New Ad (Admin Only)
 app.post("/api/admin/ads", verifyToken, async (req, res) => {
   const { title, description } = req.body;
   try {
@@ -90,7 +95,7 @@ app.post("/api/admin/ads", verifyToken, async (req, res) => {
   }
 });
 
-// Seed admin (one-time setup for admin creation)
+// Seed Admin (One-Time Setup)
 app.post("/api/admin/seed", async (req, res) => {
   const { email, password } = req.body;
   try {
@@ -98,15 +103,17 @@ app.post("/api/admin/seed", async (req, res) => {
     if (existingAdmin) {
       return res.status(400).json({ success: false, message: "Admin already exists" });
     }
-    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const hashedPassword = bcrypt.hashSync(password, 10);
     await Admin.create({ email, password: hashedPassword });
+
     res.json({ success: true, message: "Admin created successfully" });
   } catch (error) {
     res.status(500).json({ success: false, message: "Failed to create admin", error });
   }
 });
 
-// Start the server
+// Start the Server
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
